@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Инженерное бюро: квадратные уравнения</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --text:#e2e8f0; --muted:#94a3b8;
+    --accent:#38bdf8; --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b; --violet:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.45}
+  header{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:#0b1222;border-bottom:1px solid #22304a;gap:12px;flex-wrap:wrap}
+  header h1{font-size:20px;margin:0}
+  .score{font-weight:600;color:var(--warn)}
+  main{max-width:1150px;margin:0 auto;padding:18px}
+  .card{background:var(--panel);border-radius:14px;padding:18px;margin-bottom:16px;border:1px solid #2c3b55}
+  .btn{background:var(--accent);color:#06202e;border:none;border-radius:10px;padding:10px 18px;font-size:15px;font-weight:600;cursor:pointer}
+  .btn:hover{filter:brightness(1.1)}
+  .btn.sec{background:#334155;color:var(--text)}
+  .btn:disabled{opacity:.45;cursor:default}
+  .missions{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+  .mcard{background:var(--panel2);border-radius:12px;padding:14px;border:2px solid transparent;cursor:pointer;transition:.15s}
+  .mcard:hover{border-color:var(--accent)}
+  .mcard.locked{opacity:.4;cursor:not-allowed}
+  .mcard.done{border-color:var(--ok)}
+  .mcard .num{font-size:13px;color:var(--muted)}
+  .mcard .ttl{font-weight:700;margin:4px 0}
+  .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:16px}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+  canvas{width:100%;background:#0b1222;border-radius:12px;display:block}
+  .story{background:#13203a;border-left:4px solid var(--accent);padding:12px 14px;border-radius:8px;margin-bottom:12px}
+  .formula{font-family:"Cambria Math","Times New Roman",serif;font-size:18px;color:#fde68a}
+  .step{background:var(--panel2);border-radius:10px;padding:12px;margin-bottom:10px;border:1px solid #33435f}
+  .step.active{border-color:var(--accent)}
+  .step.done{border-color:var(--ok);opacity:.9}
+  .step h3{margin:0 0 8px;font-size:15px}
+  .opt{display:block;width:100%;text-align:left;margin:6px 0;padding:9px 12px;border-radius:8px;border:1px solid #42557a;background:#1b2840;color:var(--text);cursor:pointer;font-size:15px}
+  .opt:hover{border-color:var(--accent)}
+  .opt.right{border-color:var(--ok);background:#14361f}
+  .opt.wrong{border-color:var(--bad);background:#3a1717}
+  input[type=text]{width:80px;padding:7px 8px;border-radius:8px;border:1px solid #42557a;background:#0b1222;color:var(--text);font-size:16px;text-align:center}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}
+  .fb{margin-top:8px;padding:8px 10px;border-radius:8px;font-size:14px;display:none}
+  .fb.ok{display:block;background:#14361f;color:#bbf7d0}
+  .fb.no{display:block;background:#3a1717;color:#fecaca}
+  .fb.info{display:block;background:#1e2a4a;color:#c7d2fe}
+  .hint{font-size:13px;color:var(--muted);cursor:pointer;text-decoration:underline;margin-top:6px;display:inline-block}
+  .hidden{display:none}
+  .small{font-size:13px;color:var(--muted)}
+  .stars{font-size:34px;letter-spacing:4px}
+  .center{text-align:center}
+  .tag{display:inline-block;background:#334155;border-radius:999px;padding:2px 10px;font-size:12px;margin-right:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Инженерное бюро: квадратные уравнения</h1>
+  <div><span class="score" id="scoreBox">Баллы: 0</span></div>
+</header>
+<main id="app"></main>
+
+<script>
+/* ---------- утилиты ---------- */
+const R = (a,b) => a + Math.floor(Math.random()*(b-a+1));
+const $ = s => document.querySelector(s);
+const num = s => { if (s===undefined||s===null) return NaN; s=String(s).trim().replace(',','.').replace('−','-'); if(s==='') return NaN; return Number(s); };
+const near = (x,y) => Math.abs(x-y) < 0.011;
+const fmt = x => { const r=Math.round(x*100)/100; return String(r).replace('.',','); };
+const sgn = x => x<0 ? ' - '+fmt(-x) : ' + '+fmt(x);
+
+let score = 0;
+const addScore = n => { score += n; $('#scoreBox').textContent = 'Баллы: '+score; };
+
+/* ---------- миссии (числа генерируются случайно, корни "красивые") ---------- */
+function makeMissions(){
+  const M = [];
+  // 1. Мяч с крыши: h0 + v t - 5t^2 = 0, корни p и -q
+  { const p=R(2,4), q=R(1,p-1), v=5*(p-q), h0=5*p*q;
+    M.push({ id:1, title:'Мяч с крыши', tag:'когда упадет?', varName:'t',
+      story:`С крыши высотой <b>${h0} м</b> мяч подбросили вверх со скоростью <b>${v} м/с</b>. Высота мяча через t секунд: <span class="formula">h(t) = ${h0} + ${v}t - 5t²</span>. <br>Через сколько секунд мяч упадет на землю?`,
+      options:[
+        {t:`${h0} + ${v}t - 5t² = 0`, ok:true, fb:'Верно: на земле высота равна нулю.'},
+        {t:`${h0} + ${v}t - 5t² = ${h0}`, fb:'Так мы найдем момент, когда мяч снова пролетит мимо края крыши, а не упадет на землю.'},
+        {t:`${v}t - 5t² = 0`, fb:'Здесь потерялась высота крыши: мяч стартует не с земли.'},
+        {t:`${h0} + ${v}t = 0`, fb:'Пропало слагаемое -5t²: без него мяч никогда бы не упал (нет притяжения Земли).'}
+      ],
+      coef:[-5,v,h0], roots:[p,-q],
+      meaning:[
+        {t:`t = ${p} с: мяч упадет через ${p} с`, ok:true, fb:`Верно. Отрицательный корень t = ${-q} отбрасываем: время отсчитываем от броска, оно не бывает отрицательным.`},
+        {t:`t = ${-q} с`, fb:'Время после броска не может быть отрицательным. Этот корень математически верен, но в задаче смысла не имеет.'},
+        {t:'Оба корня подходят', fb:'Мяч падает на землю один раз. Подумай, какой корень не подходит по смыслу.'}
+      ],
+      good:[p], bad:[-q], answerText:`Мяч упадет через ${p} с.`,
+      params:{p,q,v,h0} });
+  }
+  // 2. Датчик на высоте H: v t - 5t^2 = H, корни q и p (оба положительные)
+  { const p=R(3,4), q=R(1,p-1), v=5*(p+q), H=5*p*q;
+    M.push({ id:2, title:'Фотодатчик', tag:'два ответа?', varName:'t',
+      story:`Мяч подбросили с земли вверх со скоростью <b>${v} м/с</b>: <span class="formula">h(t) = ${v}t - 5t²</span>. На высоте <b>${H} м</b> стоит фотодатчик. <br>В какие моменты времени мяч пролетит мимо датчика?`,
+      options:[
+        {t:`${v}t - 5t² = ${H}`, ok:true, fb:'Верно: ищем моменты, когда высота равна высоте датчика.'},
+        {t:`${v}t - 5t² = 0`, fb:'Так мы найдем моменты, когда мяч на земле (старт и падение).'},
+        {t:`${v} - 5t = ${H}`, fb:'Это уже не высота мяча: формулу высоты менять нельзя.'},
+        {t:`5t² = ${H}`, fb:'Потерялось слагаемое со скоростью броска.'}
+      ],
+      coef:[-5,v,-H], roots:[q,p],
+      meaning:[
+        {t:'Оба корня: один раз на подъеме, второй раз при падении', ok:true, fb:`Верно! Мяч пролетает датчик дважды: при t = ${q} с вверх и при t = ${p} с вниз. Здесь оба корня имеют смысл.`},
+        {t:`Только t = ${q} с`, fb:'А потом мяч падает обратно. Пролетит ли он датчик еще раз?'},
+        {t:`Только t = ${p} с`, fb:'Чтобы упасть до датчика, мяч сначала должен был подняться мимо него.'}
+      ],
+      good:[q,p], bad:[], answerText:`Мяч пролетит датчик при t = ${q} с (вверх) и t = ${p} с (вниз).`,
+      params:{p,q,v,H} });
+  }
+  // 3. Грядка: x(x+k) = S, корни p и -(p+k)
+  { const p=R(4,10), k=R(2,6), S=p*(p+k);
+    M.push({ id:3, title:'Школьная грядка', tag:'площадь', varName:'x',
+      story:`Для школьного огорода нужна прямоугольная грядка площадью <b>${S} м²</b>. Длина грядки на <b>${k} м</b> больше ширины. <br>Найди ширину x и длину грядки.`,
+      options:[
+        {t:`x(x + ${k}) = ${S}`, ok:true, fb:'Верно: площадь = ширина × длина.'},
+        {t:`x + (x + ${k}) = ${S}`, fb:'Это сумма сторон, а нам дана площадь.'},
+        {t:`2(x + x + ${k}) = ${S}`, fb:'Это периметр, а не площадь.'},
+        {t:`x² + ${k} = ${S}`, fb:'Длина равна x + k, значит площадь x(x + k), а не x² + k.'}
+      ],
+      coef:[1,k,-S], roots:[p,-(p+k)],
+      meaning:[
+        {t:`Ширина ${p} м, длина ${p+k} м`, ok:true, fb:`Верно. Корень x = ${-(p+k)} отбрасываем: длина не может быть отрицательной. Проверка: ${p} × ${p+k} = ${S}.`},
+        {t:`Ширина ${-(p+k)} м`, fb:'Сторона прямоугольника не может быть отрицательной.'},
+        {t:'Можно сделать две разные грядки', fb:'Один корень отрицательный, такая грядка не существует.'}
+      ],
+      good:[p], bad:[-(p+k)], answerText:`Грядка ${p} м × ${p+k} м.`,
+      params:{p,k,S} });
+  }
+  // 4. Рамка: (a+2x)(b+2x) = S, корни x и -(a+b)/2 - x
+  { let a=R(10,20), b=R(10,24); if((a+b)%2) b++; const x=R(2,5), S=(a+2*x)*(b+2*x);
+    M.push({ id:4, title:'Рамка для фото', tag:'ловушка', varName:'x',
+      story:`Фотографию <b>${a} × ${b} см</b> вставили в рамку одинаковой ширины x со всех сторон. Площадь фото вместе с рамкой <b>${S} см²</b>. <br>Какой ширины рамка?`,
+      options:[
+        {t:`(${a} + 2x)(${b} + 2x) = ${S}`, ok:true, fb:'Верно: рамка добавляет x с каждой из двух сторон.'},
+        {t:`(${a} + x)(${b} + x) = ${S}`, fb:'Рамка есть и слева, и справа (и сверху, и снизу): к стороне нужно добавить 2x.'},
+        {t:`${a}·${b} + 2x = ${S}`, fb:'К площади нельзя прибавлять длину.'},
+        {t:`(${a} + 2x) + (${b} + 2x) = ${S}`, fb:'Это сумма сторон, а не площадь.'}
+      ],
+      coef:[4,2*(a+b),a*b-S], roots:[x,-(a+b)/2-x],
+      meaning:[
+        {t:`Ширина рамки ${x} см`, ok:true, fb:`Верно. Проверка: (${a}+${2*x})(${b}+${2*x}) = ${a+2*x}·${b+2*x} = ${S}.`},
+        {t:`Ширина рамки ${fmt(-(a+b)/2-x)} см`, fb:'Ширина не может быть отрицательной.'},
+        {t:'Задача не имеет решения', fb:'Один из корней подходит. Найди его.'}
+      ],
+      good:[x], bad:[-(a+b)/2-x], answerText:`Ширина рамки ${x} см.`,
+      params:{a,b,x,S} });
+  }
+  // 5. Катапульта: y = kx - 0.05x^2, корни 0 и 20k
+  { const pool=[40,60,80,100]; pool.sort(()=>Math.random()-.5);
+    M.push({ id:5, title:'Катапульта', tag:'попади в цель', varName:'x', special:'catapult',
+      story:`Соревнование катапульт! Траектория снаряда: <span class="formula">y = k·x - 0,05x²</span>, где x - расстояние по земле (м), y - высота (м). Подбирая число k, ты меняешь угол броска. <br>Снаряд падает на землю, когда y = 0. Попади в 3 мишени.`,
+      targets:pool.slice(0,3) });
+  }
+  return M;
+}
+
+let missions = makeMissions();
+let doneSet = new Set();
+
+/* ---------- экраны ---------- */
+function intro(){
+  $('#app').innerHTML = `
+  <div class="card">
+    <h2 style="margin-top:0">Добро пожаловать в инженерное бюро!</h2>
+    <p>Ты - стажер. Инженерам каждый день приходится решать задачи, где ответ прячется в <b>квадратном уравнении</b>: когда упадет мяч, какого размера сделать грядку, как настроить катапульту.</p>
+    <p>В каждом задании ты пройдешь путь настоящего инженера:</p>
+    <ol>
+      <li><b>Модель:</b> выбери уравнение, которое описывает ситуацию.</li>
+      <li><b>Стандартный вид:</b> запиши коэффициенты a, b, c уравнения ax² + bx + c = 0.</li>
+      <li><b>Решение:</b> найди дискриминант и корни.</li>
+      <li><b>Смысл:</b> реши, какие корни подходят по условию задачи. Это самое важное!</li>
+      <li><b>Проверка:</b> посмотри на симуляцию и график.</li>
+    </ol>
+    <p class="small">За верный ответ с первой попытки - 2 балла, со второй и далее - 1 балл.</p>
+    <button class="btn" onclick="menu()">Начать</button>
+  </div>`;
+}
+
+function menu(){
+  const cards = missions.map((m,i)=>{
+    const locked = i>0 && !doneSet.has(missions[i-1].id);
+    const done = doneSet.has(m.id);
+    return `<div class="mcard ${locked?'locked':''} ${done?'done':''}" onclick="${locked?'':'openMission('+i+')'}">
+      <div class="num">Задание ${i+1} ${done?'✔':''}${locked?' 🔒':''}</div>
+      <div class="ttl">${m.title}</div>
+      <span class="tag">${m.tag}</span></div>`;
+  }).join('');
+  const allDone = doneSet.size===missions.length;
+  $('#app').innerHTML = `<div class="card"><h2 style="margin-top:0">Задания бюро</h2>
+    <div class="missions">${cards}</div>
+    ${allDone?'<p style="margin-top:16px"><button class="btn" onclick="finalQuiz()">Итоговая проверка понимания</button></p>':''}
+  </div>`;
+}
+
+/* ---------- задание ---------- */
+let cur, state;
+function openMission(i){
+  cur = missions[i];
+  if (cur.special==='catapult') return openCatapult(i);
+  state = {step:1, tries:{}, coef:null, D:null};
+  $('#app').innerHTML = `
+  <div class="card">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">Задание ${i+1}. ${cur.title}</h2>
+    <button class="btn sec" onclick="menu()">К заданиям</button></div>
+  </div>
+  <div class="grid">
+    <div>
+      <div class="story">${cur.story}</div>
+      <canvas id="scene" width="560" height="330"></canvas>
+      <p class="small" id="sceneCap">Симуляция запустится после решения.</p>
+      <canvas id="graph" width="560" height="300" class="hidden"></canvas>
+      <p class="small hidden" id="graphCap"></p>
+    </div>
+    <div id="steps"></div>
+  </div>`;
+  drawScene(0, false);
+  renderSteps();
+}
+
+function tryCount(k){ state.tries[k]=(state.tries[k]||0)+1; return state.tries[k]; }
+function award(k){ addScore((state.tries[k]||1)===1 ? 2 : 1); }
+
+function renderSteps(){
+  const s = state.step, v = cur.varName;
+  let h = '';
+  // шаг 1
+  h += `<div class="step ${s===1?'active':'done'}"><h3>1. Модель: какое уравнение описывает ситуацию?</h3>`;
+  if (s===1){
+    const opts = cur.options.map((o,j)=>({o,j})).sort(()=>Math.random()-.5);
+    h += opts.map(({o,j})=>`<button class="opt formula" id="o${j}" onclick="pickModel(${j})">${o.t}</button>`).join('');
+    h += `<div class="fb" id="fb1"></div>`;
+  } else h += `<div class="formula">${cur.options[0].t}</div>`;
+  h += `</div>`;
+  // шаг 2
+  if (s>=2){
+    h += `<div class="step ${s===2?'active':'done'}"><h3>2. Стандартный вид a${v}² + b${v} + c = 0</h3>`;
+    if (s===2){
+      h += `<p class="small">Перенеси все в одну сторону и раскрой скобки. Подойдет любой верный вариант (например, можно умножить все на -1).</p>
+      <div class="row">a = <input type="text" id="ca"> b = <input type="text" id="cb"> c = <input type="text" id="cc">
+      <button class="btn" onclick="checkCoef()">Проверить</button></div>
+      <span class="hint" onclick="showHint('h2')">Подсказка</span><div class="fb info hidden" id="h2">${hint2()}</div>
+      <div class="fb" id="fb2"></div>`;
+    } else h += `<div class="formula">${eqText(state.coef)}</div>`;
+    h += `</div>`;
+  }
+  // шаг 3
+  if (s>=3){
+    h += `<div class="step ${s===3?'active':'done'}"><h3>3. Дискриминант D = b² - 4ac</h3>`;
+    if (s===3){
+      h += `<div class="row">D = <input type="text" id="dd"> <button class="btn" onclick="checkD()">Проверить</button></div>
+      <span class="hint" onclick="showHint('h3')">Подсказка</span><div class="fb info hidden" id="h3">D = (${fmt(state.coef[1])})² - 4·(${fmt(state.coef[0])})·(${fmt(state.coef[2])}). Следи за знаками!</div>
+      <div class="fb" id="fb3"></div>`;
+    } else h += `<div>D = ${fmt(state.D)}, √D = ${fmt(Math.sqrt(state.D))}</div>`;
+    h += `</div>`;
+  }
+  // шаг 4
+  if (s>=4){
+    h += `<div class="step ${s===4?'active':'done'}"><h3>4. Корни: ${v} = (-b ± √D) / 2a</h3>`;
+    if (s===4){
+      h += `<div class="row">${v}₁ = <input type="text" id="r1"> ${v}₂ = <input type="text" id="r2"> <button class="btn" onclick="checkRoots()">Проверить</button></div>
+      <p class="small">Порядок корней не важен. Дробные ответы можно писать через запятую: 2,5</p>
+      <span class="hint" onclick="showHint('h4')">Подсказка</span><div class="fb info hidden" id="h4">√D = ${fmt(Math.sqrt(state.D))}; 2a = ${fmt(2*state.coef[0])}. ${v}₁ = (${fmt(-state.coef[1])} + ${fmt(Math.sqrt(state.D))}) / ${fmt(2*state.coef[0])}</div>
+      <div class="fb" id="fb4"></div>`;
+    } else h += `<div>${v}₁ = ${fmt(cur.roots[0])}, ${v}₂ = ${fmt(cur.roots[1])}</div>`;
+    h += `</div>`;
+  }
+  // шаг 5
+  if (s>=5){
+    h += `<div class="step ${s===5?'active':'done'}"><h3>5. Смысл: какой ответ подходит к задаче?</h3>`;
+    if (s===5){
+      const opts = cur.meaning.map((o,j)=>({o,j})).sort(()=>Math.random()-.5);
+      h += opts.map(({o,j})=>`<button class="opt" id="m${j}" onclick="pickMeaning(${j})">${o.t}</button>`).join('');
+      h += `<div class="fb" id="fb5"></div>`;
+    } else h += `<div class="fb ok">${cur.answerText}</div>`;
+    h += `</div>`;
+  }
+  if (s===6){
+    h += `<div class="step done"><h3>Задание выполнено!</h3>
+      <p>Посмотри симуляцию и график слева: корни уравнения - это точки, где парабола пересекает ось. Зеленые точки подходят по смыслу, красные - нет.</p>
+      <button class="btn" onclick="menu()">Следующее задание</button></div>`;
+  }
+  $('#steps').innerHTML = h;
+}
+
+function hint2(){
+  const v=cur.varName;
+  if (cur.id===1||cur.id===2) return `Запиши уравнение так, чтобы справа был 0. Слагаемое с ${v}² - это a, с ${v} - это b, число без ${v} - это c.`;
+  if (cur.id===3) return 'Раскрой скобки: x·x + k·x, потом перенеси площадь влево.';
+  return 'Раскрой скобки: (a + 2x)(b + 2x) = ab + 2ax + 2bx + 4x². Потом перенеси площадь влево.';
+}
+function showHint(id){ document.getElementById(id).classList.toggle('hidden'); }
+function eqText(c){
+  const v=cur.varName;
+  let s = (c[0]===1?'':c[0]===-1?'-':fmt(c[0]))+v+'²';
+  if (c[1]!==0) s += (c[1]<0?' - ':' + ')+(Math.abs(c[1])===1?'':fmt(Math.abs(c[1])))+v;
+  if (c[2]!==0) s += sgn(c[2]);
+  return s+' = 0';
+}
+function setFb(id, ok, text){ const e=document.getElementById(id); e.className='fb '+(ok?'ok':'no'); e.innerHTML=text; }
+
+function pickModel(j){
+  const o = cur.options[j]; tryCount(1);
+  document.getElementById('o'+j).classList.add(o.ok?'right':'wrong');
+  if (o.ok){ award(1); setFb('fb1',true,o.fb); setTimeout(()=>{state.step=2;renderSteps();},900); }
+  else setFb('fb1',false,o.fb);
+}
+
+function checkCoef(){
+  const a=num($('#ca').value), b=num($('#cb').value), c=num($('#cc').value);
+  if ([a,b,c].some(isNaN)) return setFb('fb2',false,'Введи все три числа.');
+  if (a===0) return setFb('fb2',false,'Если a = 0, уравнение уже не квадратное.');
+  tryCount(2);
+  const [A,B,C] = cur.coef, k = a/A;
+  if (near(b,B*k) && near(c,C*k)){
+    award(2); state.coef=[a,b,c];
+    setFb('fb2',true,'Верно! '+(k===1?'':'Твой вариант отличается множителем, это допустимо: корни будут те же.'));
+    setTimeout(()=>{state.step=3;renderSteps();},900);
+  } else {
+    let msg = 'Не совпадает. ';
+    if (near(Math.abs(a),Math.abs(A)) && near(Math.abs(b),Math.abs(B)) && near(Math.abs(c),Math.abs(C))) msg += 'Числа почти правильные, проверь знаки: при переносе через "=" знак меняется.';
+    else msg += 'Проверь, все ли перенесено в левую часть и правильно ли раскрыты скобки.';
+    setFb('fb2',false,msg);
+  }
+}
+
+function checkD(){
+  const d=num($('#dd').value); if (isNaN(d)) return setFb('fb3',false,'Введи число.');
+  tryCount(3);
+  const [a,b,c]=state.coef, D=b*b-4*a*c;
+  if (near(d,D)){ award(3); state.D=D; setFb('fb3',true,`Верно! D = ${fmt(D)} > 0, значит у уравнения два корня.`); setTimeout(()=>{state.step=4;renderSteps();},900); }
+  else {
+    let msg='Пока неверно. ';
+    if (near(d,b*b+4*a*c)) msg+='Похоже, ошибка в знаке: D = b² - 4ac, а c здесь со своим знаком.';
+    else if (near(d,-b*b-4*a*c) || near(d, -(b*b)-4*a*c)) msg+='Квадрат любого числа неотрицателен: (-b)² = b².';
+    else msg+='Посчитай отдельно b² и 4ac.';
+    setFb('fb3',false,msg);
+  }
+}
+
+function checkRoots(){
+  const r1=num($('#r1').value), r2=num($('#r2').value);
+  if (isNaN(r1)||isNaN(r2)) return setFb('fb4',false,'Введи оба корня.');
+  tryCount(4);
+  const [x1,x2]=cur.roots;
+  const ok = (near(r1,x1)&&near(r2,x2))||(near(r1,x2)&&near(r2,x1));
+  if (ok){ award(4); setFb('fb4',true,'Верно! Теперь самое интересное: что означают эти корни в задаче?'); setTimeout(()=>{state.step=5;renderSteps();},1000); }
+  else {
+    const one = [x1,x2].some(x=>near(x,r1)||near(x,r2));
+    setFb('fb4',false, one ? 'Один корень верный. Проверь второй: не забудь про знак "±" и деление на 2a.' : 'Пока неверно. Подставь найденное число в уравнение и проверь, получится ли 0.');
+  }
+}
+
+function pickMeaning(j){
+  const o=cur.meaning[j]; tryCount(5);
+  document.getElementById('m'+j).classList.add(o.ok?'right':'wrong');
+  if (o.ok){
+    award(5); setFb('fb5',true,o.fb);
+    doneSet.add(cur.id);
+    setTimeout(()=>{ state.step=6; renderSteps(); runScene(); drawGraph(); },1200);
+  } else setFb('fb5',false,o.fb);
+}
+
+/* ---------- сцены ---------- */
+let anim;
+function runScene(){
+  cancelAnimationFrame(anim);
+  const start = performance.now(), dur = 2600;
+  const loop = now => { const pr=Math.min(1,(now-start)/dur); drawScene(pr,true); if(pr<1) anim=requestAnimationFrame(loop); };
+  anim = requestAnimationFrame(loop);
+  $('#sceneCap').textContent = 'Симуляция по найденному ответу. '+cur.answerText;
+}
+
+function drawScene(pr, solved){
+  const cv=$('#scene'); if(!cv) return; const g=cv.getContext('2d'); const W=cv.width,H=cv.height;
+  g.clearRect(0,0,W,H);
+  g.font='14px Segoe UI, Arial'; g.fillStyle='#e2e8f0';
+  const P=cur.params;
+  if (cur.id===1 || cur.id===2){
+    const ground=H-30;
+    const tEnd = P.p;
+    const hFun = t => cur.id===1 ? P.h0+P.v*t-5*t*t : P.v*t-5*t*t;
+    let hMax = 0; for(let t=0;t<=tEnd;t+=0.01) hMax=Math.max(hMax,hFun(t));
+    const sy = (ground-30)/hMax;
+    g.fillStyle='#1f3b2a'; g.fillRect(0,ground,W,H-ground);
+    const bx = 200;
+    if (cur.id===1){ g.fillStyle='#475569'; g.fillRect(bx-80,ground-P.h0*sy,70,P.h0*sy); g.fillStyle='#cbd5e1'; g.fillText(P.h0+' м',bx-70,ground-P.h0*sy-6); }
+    if (cur.id===2){ const yH=ground-P.H*sy; g.strokeStyle='#f59e0b'; g.setLineDash([6,5]); g.beginPath(); g.moveTo(0,yH); g.lineTo(W,yH); g.stroke(); g.setLineDash([]);
+      g.fillStyle='#f59e0b'; g.fillRect(W-60,yH-8,22,16); g.fillText('датчик '+P.H+' м',W-110,yH+26); }
+    // шкала
+    g.fillStyle='#94a3b8'; g.fillText('высота',8,18);
+    const t = solved ? pr*tEnd : 0;
+    const h = hFun(t);
+    // след
+    if (solved){ g.strokeStyle='rgba(56,189,248,.35)'; g.beginPath();
+      for(let s=0;s<=t;s+=0.02){ const x=bx-5+ s/tEnd*0 + (s/tEnd)*40, y=ground-hFun(s)*sy; if(s===0) g.moveTo(x,y); else g.lineTo(x,y);} g.stroke(); }
+    const x = bx-5 + (solved? pr*40 : 0);
+    g.fillStyle='#38bdf8'; g.beginPath(); g.arc(x, ground-h*sy-8, 8, 0, Math.PI*2); g.fill();
+    g.fillStyle='#e2e8f0'; g.fillText('t = '+fmt(t)+' с,  h = '+fmt(Math.max(0,h))+' м', 330, 30);
+    if (cur.id===2 && solved){ [P.q,P.p].forEach((tt,i)=>{ if(t>=tt){ g.fillStyle='#22c55e'; g.fillText((i? 'вниз':'вверх')+': t = '+tt+' с', 330, 55+i*20);} }); }
+    if (cur.id===1 && solved && pr>=1){ g.fillStyle='#22c55e'; g.fillText('Мяч на земле через '+P.p+' с', 330, 55); }
+  }
+  if (cur.id===3){
+    const x = solved ? P.p : P.p*0.6, len = x+P.k;
+    const sc = Math.min((W-120)/(P.p+P.k), (H-90)/P.p) * (solved? (0.4+0.6*pr):1);
+    const w=len*sc, h=x*sc, ox=(W-w)/2, oy=(H-h)/2+10;
+    g.fillStyle='#3f2a14'; g.fillRect(ox,oy,w,h);
+    g.strokeStyle='#22c55e'; g.lineWidth=3; g.strokeRect(ox,oy,w,h); g.lineWidth=1;
+    for(let i=1;i<6;i++){ g.strokeStyle='rgba(34,197,94,.35)'; g.beginPath(); g.moveTo(ox+8,oy+h*i/6); g.lineTo(ox+w-8,oy+h*i/6); g.stroke(); }
+    g.fillStyle='#e2e8f0';
+    g.fillText(solved? (P.p+P.k)+' м' : 'x + '+P.k, ox+w/2-20, oy-8);
+    g.fillText(solved? P.p+' м' : 'x', ox-40, oy+h/2);
+    g.fillText('S = '+P.S+' м²', ox+w/2-30, oy+h/2+5);
+  }
+  if (cur.id===4){
+    const sc = Math.min((W-80)/(P.a+2*P.x),(H-60)/(P.b+2*P.x));
+    const fw=(P.a+2*P.x)*sc, fh=(P.b+2*P.x)*sc, ox=(W-fw)/2, oy=(H-fh)/2;
+    const fr = solved ? P.x*sc*Math.min(1,pr*1.3) : P.x*sc;
+    g.fillStyle='#8b5a2b'; g.fillRect(ox+P.x*sc-fr, oy+P.x*sc-fr, P.a*sc+2*fr, P.b*sc+2*fr);
+    g.fillStyle='#1e3a5f'; g.fillRect(ox+P.x*sc, oy+P.x*sc, P.a*sc, P.b*sc);
+    g.fillStyle='#fde68a'; g.beginPath(); g.arc(ox+P.x*sc+P.a*sc*0.7, oy+P.x*sc+P.b*sc*0.3, 10,0,7); g.fill();
+    g.fillStyle='#2f6b3a'; g.beginPath(); g.moveTo(ox+P.x*sc, oy+P.x*sc+P.b*sc); g.lineTo(ox+P.x*sc+P.a*sc*0.4, oy+P.x*sc+P.b*sc*0.45); g.lineTo(ox+P.x*sc+P.a*sc, oy+P.x*sc+P.b*sc); g.fill();
+    g.fillStyle='#e2e8f0';
+    g.fillText(P.a+' см', ox+fw/2-15, oy+P.x*sc+P.b*sc/2);
+    g.fillText(solved? 'x = '+P.x+' см' : 'x = ?', ox+4, oy-4>12?oy-4:14);
+    g.fillText('S = '+P.S+' см² (вместе с рамкой)', 10, H-8);
+  }
+}
+
+/* ---------- график ---------- */
+function drawGraph(){
+  const cv=$('#graph'); cv.classList.remove('hidden'); $('#graphCap').classList.remove('hidden');
+  const g=cv.getContext('2d'), W=cv.width, H=cv.height;
+  const [a,b,c]=cur.coef, f=x=>a*x*x+b*x+c;
+  const rs=cur.roots, lo=Math.min(...rs), hi=Math.max(...rs), pad=(hi-lo)*0.35+1;
+  const x0=lo-pad, x1=hi+pad;
+  let ymin=Infinity,ymax=-Infinity; for(let i=0;i<=200;i++){const y=f(x0+(x1-x0)*i/200); ymin=Math.min(ymin,y); ymax=Math.max(ymax,y);}
+  ymin=Math.min(ymin,0); ymax=Math.max(ymax,0); const yp=(ymax-ymin)*0.1; ymin-=yp; ymax+=yp;
+  const X=x=>40+(x-x0)/(x1-x0)*(W-60), Y=y=>H-25-(y-ymin)/(ymax-ymin)*(H-45);
+  g.clearRect(0,0,W,H);
+  g.strokeStyle='#475569'; g.beginPath(); g.moveTo(40,Y(0)); g.lineTo(W-15,Y(0)); g.stroke();
+  if (x0<0&&x1>0){ g.beginPath(); g.moveTo(X(0),10); g.lineTo(X(0),H-20); g.stroke(); }
+  g.fillStyle='#94a3b8'; g.font='13px Segoe UI, Arial'; g.fillText(cur.varName, W-20, Y(0)-6);
+  g.fillText('y = '+eqText(cur.coef).replace(' = 0',''), 48, 18);
+  g.strokeStyle='#a78bfa'; g.lineWidth=2.5; g.beginPath();
+  for(let i=0;i<=300;i++){const x=x0+(x1-x0)*i/300; const px=X(x),py=Y(f(x)); i?g.lineTo(px,py):g.moveTo(px,py);} g.stroke(); g.lineWidth=1;
+  rs.forEach(r=>{ const good=cur.good.some(z=>near(z,r));
+    g.fillStyle= good?'#22c55e':'#ef4444'; g.beginPath(); g.arc(X(r),Y(0),7,0,7); g.fill();
+    g.fillStyle='#e2e8f0'; g.fillText(fmt(r)+(good?' ✔':' ✘'), X(r)-12, Y(0)+(f(r+0.01)>0?20:-12)); });
+  $('#graphCap').textContent='График y = a'+cur.varName+'² + b'+cur.varName+' + c. Корни - точки пересечения параболы с осью. Зеленые подходят по смыслу задачи, красные отброшены.';
+}
+
+/* ---------- катапульта ---------- */
+let cat;
+function openCatapult(i){
+  cat = {round:0, tries:0, stepA:false, triesA:0};
+  $('#app').innerHTML = `
+  <div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Задание ${i+1}. ${cur.title}</h2>
+  <button class="btn sec" onclick="menu()">К заданиям</button></div></div>
+  <div class="grid">
+    <div><div class="story">${cur.story}</div>
+      <canvas id="cat" width="560" height="340"></canvas><p class="small" id="catCap"></p></div>
+    <div id="catSteps"></div>
+  </div>`;
+  catStepA(); drawCat(null);
+}
+function catStepA(){
+  const opts=[
+    {t:'x = 0 и x = 20k',ok:true,fb:'Верно! Вынесем x: x(k - 0,05x) = 0. Значит x = 0 (старт) или k - 0,05x = 0, то есть x = k / 0,05 = 20k (падение).'},
+    {t:'x = 0 и x = 0,05k',fb:'Проверь деление: из k - 0,05x = 0 получаем x = k / 0,05.'},
+    {t:'x = k и x = -k',fb:'Здесь нет x², чтобы извлекать корень. Попробуй вынести x за скобки.'},
+    {t:'Только x = 20k',fb:'Пропущен еще один корень. Что происходит в точке x = 0?'}
+  ].map((o,j)=>({...o,j}));
+  cat.opts=opts;
+  $('#catSteps').innerHTML = `<div class="step active"><h3>1. Разведка: реши уравнение k·x - 0,05x² = 0</h3>
+   <p class="small">Это неполное квадратное уравнение (c = 0). Где снаряд касается земли?</p>
+   ${[...opts].sort(()=>Math.random()-.5).map(o=>`<button class="opt formula" id="ca${o.j}" onclick="catPickA(${o.j})">${o.t}</button>`).join('')}
+   <div class="fb" id="fbA"></div></div>`;
+}
+function catPickA(j){
+  const o=cat.opts[j]; cat.triesA++;
+  document.getElementById('ca'+j).classList.add(o.ok?'right':'wrong');
+  if(o.ok){ addScore(cat.triesA===1?2:1); setFb('fbA',true,o.fb+' Что означает корень x = 0? Это точка старта, в задаче он нам не нужен.'); setTimeout(catRound,2200); }
+  else setFb('fbA',false,o.fb);
+}
+function catRound(){
+  const L=cur.targets[cat.round]; cat.tries=0;
+  $('#catSteps').innerHTML = `<div class="step done"><h3>1. Разведка</h3><div class="formula">x(k - 0,05x) = 0 → x = 0 или x = 20k</div></div>
+   <div class="step active"><h3>2. Мишень ${cat.round+1} из 3: расстояние ${L} м</h3>
+   <p>Каким должно быть k, чтобы снаряд упал ровно в мишень?</p>
+   <div class="row">k = <input type="text" id="kk"> <button class="btn" onclick="catShoot()">Огонь!</button></div>
+   <span class="hint" onclick="showHint('hk')">Подсказка</span><div class="fb info hidden" id="hk">Второй корень должен совпасть с мишенью: 20k = ${L}.</div>
+   <div class="fb" id="fbK"></div></div>`;
+  drawCat(null);
+}
+function catShoot(){
+  const k=num($('#kk').value); if(isNaN(k)||k<=0) return setFb('fbK',false,'Введи положительное число k.');
+  if (k>8) return setFb('fbK',false,'Слишком большое k: катапульта сломается. Попробуй посчитать точнее.');
+  cat.tries++;
+  const L=cur.targets[cat.round], land=20*k;
+  cancelAnimationFrame(anim); const st=performance.now(), dur=1800;
+  const loop=now=>{const pr=Math.min(1,(now-st)/dur); drawCat(k,pr); if(pr<1) anim=requestAnimationFrame(loop); else after();};
+  anim=requestAnimationFrame(loop);
+  function after(){
+    if (Math.abs(land-L)<=1){
+      addScore(cat.tries===1?2:1);
+      setFb('fbK',true,`Попадание! Снаряд упал в точке x = 20·${fmt(k)} = ${fmt(land)} м. Высшая точка полета: x = ${fmt(land/2)} м (посередине между корнями).`);
+      cat.round++;
+      setTimeout(()=>{ if(cat.round<3) catRound(); else catDone(); }, 2300);
+    } else {
+      setFb('fbK',false,`Снаряд упал в точке x = ${fmt(land)} м, это ${land<L?'недолет':'перелет'} на ${fmt(Math.abs(land-L))} м. Используй второй корень: x = 20k.`);
+    }
+  }
+}
+function catDone(){
+  doneSet.add(cur.id);
+  $('#catSteps').innerHTML = `<div class="step done"><h3>Все мишени поражены!</h3>
+   <p>Ты увидел главное: точки, где снаряд на земле, - это корни квадратного уравнения. Меняя коэффициент k, мы двигаем второй корень, а вместе с ним и точку падения.</p>
+   <button class="btn" onclick="menu()">К заданиям</button></div>`;
+}
+function drawCat(k,pr){
+  const cv=$('#cat'), g=cv.getContext('2d'), W=cv.width, H=cv.height;
+  const L = cur.targets[Math.min(cat.round,2)];
+  const xmax=125, ground=H-35, sx=(W-50)/xmax;
+  const kk = k||0, ymaxPhys = Math.max(5*kk*kk, 60), sy=(ground-25)/ymaxPhys;
+  g.clearRect(0,0,W,H);
+  g.fillStyle='#1f3b2a'; g.fillRect(0,ground,W,H-ground);
+  g.fillStyle='#94a3b8'; g.font='12px Segoe UI, Arial';
+  for(let x=0;x<=120;x+=20){ const px=25+x*sx; g.fillRect(px,ground,1,6); g.fillText(x,px-6,ground+20); }
+  // мишень
+  const tx=25+L*sx; g.fillStyle='#ef4444'; g.fillRect(tx-10,ground-6,20,6); g.fillStyle='#fff'; g.fillRect(tx-4,ground-6,8,6);
+  g.fillStyle='#fca5a5'; g.fillText('мишень '+L+' м', tx-30, ground-12);
+  // катапульта
+  g.fillStyle='#a16207'; g.fillRect(15,ground-14,24,14);
+  if (k){
+    const land=20*k, xEnd=land*pr;
+    g.strokeStyle='rgba(167,139,250,.8)'; g.lineWidth=2; g.beginPath();
+    for(let x=0;x<=xEnd;x+=0.5){ const y=k*x-0.05*x*x; const px=25+x*sx, py=ground-y*sy; x?g.lineTo(px,py):g.moveTo(px,py); }
+    g.stroke(); g.lineWidth=1;
+    const y=k*xEnd-0.05*xEnd*xEnd;
+    g.fillStyle='#fde68a'; g.beginPath(); g.arc(25+xEnd*sx, ground-y*sy, 6,0,7); g.fill();
+    g.fillStyle='#e2e8f0'; g.font='14px Segoe UI, Arial'; g.fillText('y = '+fmt(k)+'x - 0,05x²', 50, 20);
+  }
+  $('#catCap').textContent = k? 'Точки падения: x = 0 (старт) и x = 20k.' : 'Мишень ждет. Подбери k.';
+}
+
+/* ---------- итоговая проверка понимания ---------- */
+const quiz = [
+  {q:'Мяч бросили вверх. Уравнение "высота = 50 м" имеет D < 0. Что это значит?', a:['Мяч никогда не поднимется на 50 м','Мяч будет на высоте 50 м два раза','Мяч упадет через 50 секунд'], r:0},
+  {q:'В той же задаче D = 0. Что это значит?', a:['Мяч касается этой высоты ровно один раз - в самой верхней точке','Мяч стоит на месте','Задача решена неверно'], r:0},
+  {q:'Почему в задаче про грядку мы отбросили отрицательный корень?', a:['Длина стороны не может быть отрицательной','Отрицательные корни всегда неверные','Потому что D > 0'], r:0},
+  {q:'В задаче про датчик оба корня подошли. Почему?', a:['Мяч пролетает высоту датчика дважды: вверх и вниз','Так всегда бывает в квадратных уравнениях','Потому что a < 0'], r:0},
+  {q:'Что на графике параболы соответствует корням уравнения ax² + bx + c = 0?', a:['Точки пересечения параболы с осью x','Вершина параболы','Точка пересечения с осью y'], r:0}
+];
+let qi=0, qScore=0;
+function finalQuiz(){ qi=0; qScore=0; showQ(); }
+function showQ(){
+  if (qi>=quiz.length) return finish();
+  const Q=quiz[qi], order=Q.a.map((t,j)=>({t,j})).sort(()=>Math.random()-.5);
+  $('#app').innerHTML=`<div class="card"><h2 style="margin-top:0">Проверка понимания: вопрос ${qi+1} из ${quiz.length}</h2>
+   <p style="font-size:17px">${Q.q}</p>
+   ${order.map(o=>`<button class="opt" id="q${o.j}" onclick="ansQ(${o.j})">${o.t}</button>`).join('')}
+   <div class="fb" id="fbq"></div></div>`;
+}
+function ansQ(j){
+  const Q=quiz[qi]; document.querySelectorAll('.opt').forEach(b=>b.disabled=true);
+  const ok=j===Q.r; document.getElementById('q'+j).classList.add(ok?'right':'wrong');
+  if(!ok) document.getElementById('q'+Q.r).classList.add('right');
+  if(ok){qScore++; addScore(2);}
+  setFb('fbq',ok, ok?'Верно!':'Правильный ответ отмечен зеленым.');
+  setTimeout(()=>{qi++;showQ();},1600);
+}
+function finish(){
+  const max = 4*10 + 2 + 3*2 + quiz.length*2;
+  const pct = score/max, st = pct>=0.85?3:pct>=0.6?2:1;
+  $('#app').innerHTML=`<div class="card center">
+   <h2>Стажировка завершена!</h2>
+   <div class="stars">${'★'.repeat(st)}${'☆'.repeat(3-st)}</div>
+   <p>Баллы: <b>${score}</b> из ${max}. Проверка понимания: ${qScore} из ${quiz.length}.</p>
+   <p style="max-width:640px;margin:10px auto">Запомни алгоритм инженера: <b>модель → стандартный вид → решение → смысл корней → проверка</b>. Корень уравнения - это еще не ответ задачи, пока ты не проверил, имеет ли он смысл.</p>
+   <button class="btn" onclick="restart()">Пройти заново с новыми числами</button></div>`;
+}
+function restart(){ missions=makeMissions(); doneSet=new Set(); score=0; addScore(0); menu(); }
+
+intro();
+</script>
+</body>
+</html>
